@@ -2,3 +2,5 @@ github.com/singularityos-lab/sinty-identity v0.0.0-20261124194818-20577feceb1c h
 github.com/singularityos-lab/sinty-identity v0.0.0-20261124194818-20577feceb1c/go.mod h1:4J750eq+wpnvsBR7XeCGByf1bLx0ETc/Rfu4kGHe6ac=
 github.com/singularityos-lab/sinty-identity v0.0.0-20261124201402-8275601179f7 h1:2parxrSyiXj6eB7Zaa9WrDyDG1w/hYEWQA5oj/02Ku0=
 github.com/singularityos-lab/sinty-identity v0.0.0-20261124201402-8275601179f7/go.mod h1:4J750eq+wpnvsBR7XeCGByf1bLx0ETc/Rfu4kGHe6ac=
+github.com/singularityos-lab/sinty-identity v0.0.0-20261124202443-c81e43ab3d76 h1:hY9B/5BkXstoe53jXe8ymaXJ6YdrpoXBy5qmdPBU4ZY=
+github.com/singularityos-lab/sinty-identity v0.0.0-20261124202443-c81e43ab3d76/go.mod h1:4J750eq+wpnvsBR7XeCGByf1bLx0ETc/Rfu4kGHe6ac=

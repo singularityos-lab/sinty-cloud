@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -103,53 +102,12 @@ func serve(args []string) error {
 	if *cliClient != "" {
 		cfg.Audiences = []string{*cliClient}
 	}
-	var auth *rp.RP
-	var err error
-	for {
-		auth, err = rp.New(ctx, cfg)
-		if err == nil || ctx.Err() != nil {
-			break
-		}
-		fmt.Fprintln(os.Stderr, "sinty-cloud: waiting for the identity provider:", err)
-		select {
-		case <-ctx.Done():
-		case <-time.After(5 * time.Second):
-		}
-	}
+	auth, err := rp.Connect(ctx, cfg, func(f string, a ...any) { fmt.Fprintf(os.Stderr, "sinty-cloud: "+f+"\n", a...) })
 	if err != nil {
 		return err
 	}
 	s := server.New(auth, files.New(*data, *quota), *ui, strings.HasPrefix(*public, "https://"))
-	srv := &http.Server{Addr: *listen, Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
-	go func() {
-		<-ctx.Done()
-		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		srv.Shutdown(shut)
-	}()
-	if *cert != "" {
-		err = srv.ListenAndServeTLS(*cert, *key)
-	} else {
-		err = srv.ListenAndServe()
-	}
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
-}
-
-type credentials struct {
-	Server  string    `json:"server"`
-	Token   string    `json:"token"`
-	Expires time.Time `json:"expires"`
-}
-
-func credentialsPath() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "sinty-cloud", "credentials.json"), nil
+	return rp.Serve(ctx, *listen, s.Handler(), *cert, *key)
 }
 
 func login(args []string) error {
@@ -163,43 +121,20 @@ func login(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	claims, tok, err := rp.LoopbackLogin(ctx, rp.Config{Issuer: *issuer, ClientID: *client}, func(u string) error {
-		fmt.Fprintln(os.Stderr, "Sign in at:", u)
-		if opener := os.Getenv("SINTY_CLOUD_BROWSER"); opener != "" {
-			return exec.Command(opener, u).Start()
-		}
-		exec.Command("xdg-open", u).Start()
-		return nil
-	})
+	claims, sess, err := rp.CommandLineLogin(ctx, "sinty-cloud", *srv, rp.Config{Issuer: *issuer, ClientID: *client})
 	if err != nil {
 		return err
 	}
-	path, err := credentialsPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	raw, _ := json.Marshal(credentials{Server: strings.TrimRight(*srv, "/"), Token: tok.Access, Expires: tok.Expires})
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Signed in as %s until %s\n", claims.Name, tok.Expires.Local().Format(time.Kitchen))
+	fmt.Fprintf(os.Stderr, "Signed in as %s until %s\n", claims.Name, sess.Expires.Local().Format(time.Kitchen))
 	return nil
 }
 
-func load() (credentials, error) {
-	var c credentials
-	path, err := credentialsPath()
+func load() (rp.Session, error) {
+	sess, err := rp.LoadSession("sinty-cloud")
 	if err != nil {
-		return c, err
+		return sess, exitError{3, "not signed in: run sinty-cloud login"}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(raw, &c) != nil || time.Now().After(c.Expires) {
-		return c, exitError{3, "not signed in: run sinty-cloud login"}
-	}
-	return c, nil
+	return sess, nil
 }
 
 func escape(p string) string {
@@ -212,33 +147,20 @@ func escape(p string) string {
 	return strings.Join(parts, "/")
 }
 
-func call(c credentials, method, path string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequest(method, c.Server+path, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusNoContent:
-		return resp, nil
-	case http.StatusUnauthorized:
-		resp.Body.Close()
+func call(c rp.Session, method, path string, body io.Reader) (*http.Response, error) {
+	resp, err := c.Do(context.Background(), method, path, body)
+	var api *rp.APIError
+	switch {
+	case errors.Is(err, rp.ErrSignedOut):
 		return nil, exitError{3, "not signed in: run sinty-cloud login"}
-	case http.StatusNotFound:
-		resp.Body.Close()
+	case errors.Is(err, rp.ErrNotFound):
 		return nil, exitError{4, "not found"}
-	case http.StatusInsufficientStorage:
-		resp.Body.Close()
+	case errors.As(err, &api) && api.Status == http.StatusInsufficientStorage:
 		return nil, exitError{5, "the space is full"}
+	case err != nil:
+		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	var e struct{ Error string }
-	json.NewDecoder(resp.Body).Decode(&e)
-	resp.Body.Close()
-	return nil, fmt.Errorf("%s %s: %s", method, path, e.Error)
+	return resp, nil
 }
 
 func remote(verb string, args []string) error {
