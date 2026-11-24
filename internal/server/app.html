@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sinty Cloud</title>
+<link rel="stylesheet" href="/ui/src/sintyui.css">
+<script src="/ui/src/sintyui.js"></script>
+<script src="/app.js" defer></script>
+<style>
+  body { margin: 0; min-height: 100vh; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 700; margin: 0; flex: 1; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; font-size: 13px; }
+  nav button { font: inherit; background: none; border: 0; color: var(--sinty-accent-color); padding: 2px 4px; cursor: default; }
+  .usage { font-size: 12px; opacity: .7; }
+  .empty { padding: 24px 12px; text-align: center; opacity: .7; }
+  input[type=file] { display: none; }
+  #message { min-height: 18px; font-size: 12px; color: var(--sinty-error-color); }
+</style>
+</head>
+<body class="sinty-surface">
+<main>
+  <header>
+    <h1>Files</h1>
+    <span class="usage" id="usage"></span>
+    <sinty-button id="new-folder">New folder</sinty-button>
+    <sinty-button id="upload" variant="suggested" pill>Upload</sinty-button>
+    <input type="file" id="picker" multiple>
+  </header>
+  <nav id="crumbs" aria-label="Folder"></nav>
+  <p id="message" role="alert"></p>
+  <sinty-group id="list"></sinty-group>
+</main>
+<sinty-dialog id="folder-dialog" heading="New folder">
+  <sinty-entry id="folder-name" label="Folder name" placeholder="Name"></sinty-entry>
+  <sinty-button slot="actions" id="folder-cancel" pill>Cancel</sinty-button>
+  <sinty-button slot="actions" id="folder-create" variant="suggested" pill>Create</sinty-button>
+</sinty-dialog>
+<sinty-dialog id="delete-dialog" heading="Delete?">
+  <p id="delete-text"></p>
+  <sinty-button slot="actions" id="delete-cancel" pill>Cancel</sinty-button>
+  <sinty-button slot="actions" id="delete-confirm" variant="destructive" pill>Delete</sinty-button>
+</sinty-dialog>
+</body>
+</html>
