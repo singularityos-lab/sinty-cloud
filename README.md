@@ -43,7 +43,7 @@ Then:
 
 ```sh
 sinty-cloud serve -issuer https://id.example.org -public https://cloud.example.org \
-  -client cloud -secret-file client.secret -cli-client cloud-cli -cert tls.crt -key tls.key
+  -client cloud -secret-file client.secret -accept cloud-cli,desktop -cert tls.crt -key tls.key
 ```
 
 ## Command line

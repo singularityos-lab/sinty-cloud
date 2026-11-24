@@ -23,7 +23,7 @@ import (
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  sinty-cloud serve -issuer URL -client ID -secret-file FILE -public URL [-cli-client ID] [-data DIR] [-quota BYTES] [-listen ADDR] [-ui DIR] [-cert FILE -key FILE]
+  sinty-cloud serve -issuer URL -client ID -secret-file FILE -public URL [-accept ID[,ID]] [-data DIR] [-quota BYTES] [-listen ADDR] [-ui DIR] [-cert FILE -key FILE]
   sinty-cloud login -server URL -issuer URL [-client ID]
   sinty-cloud ls [PATH]
   sinty-cloud get REMOTE [LOCAL]
@@ -74,7 +74,7 @@ func serve(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	issuer := fs.String("issuer", "", "identity provider")
 	client := fs.String("client", "cloud", "client id at the identity provider")
-	cliClient := fs.String("cli-client", "", "client id of the command line, whose tokens are accepted too")
+	accept := fs.String("accept", "", "other clients whose access tokens are accepted, comma separated: the command line, the desktop")
 	secretFile := fs.String("secret-file", "", "file holding the client secret")
 	public := fs.String("public", "", "public address of this service")
 	data := fs.String("data", "/var/lib/sinty-cloud", "storage directory")
@@ -99,8 +99,10 @@ func serve(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cfg := rp.Config{Issuer: *issuer, ClientID: *client, ClientSecret: secret, RedirectURL: strings.TrimRight(*public, "/") + "/cb", MinLevel: *minLevel}
-	if *cliClient != "" {
-		cfg.Audiences = []string{*cliClient}
+	for _, id := range strings.Split(*accept, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			cfg.Audiences = append(cfg.Audiences, id)
+		}
 	}
 	auth, err := rp.Connect(ctx, cfg, func(f string, a ...any) { fmt.Fprintf(os.Stderr, "sinty-cloud: "+f+"\n", a...) })
 	if err != nil {
