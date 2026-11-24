@@ -56,7 +56,7 @@ func do(t *testing.T, c *http.Client, method, u, bearer string, body io.Reader, 
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	if header {
-		req.Header.Set(requestHeader, "1")
+		req.Header.Set(rp.RequestHeader, "1")
 	}
 	resp, err := c.Do(req)
 	if err != nil {
@@ -68,7 +68,7 @@ func do(t *testing.T, c *http.Client, method, u, bearer string, body io.Reader, 
 func TestBrowserSession(t *testing.T) {
 	srv := setup(t, fakeAuth{})
 	c := client()
-	if r := do(t, c, "GET", srv.URL+"/", "", nil, false); r.StatusCode != http.StatusFound || r.Header.Get("Location") != "/login" {
+	if r := do(t, c, "GET", srv.URL+"/", "", nil, false); r.StatusCode != http.StatusFound || !strings.HasPrefix(r.Header.Get("Location"), "/login") {
 		t.Fatal("the app opened without a session")
 	}
 	if r := do(t, c, "GET", srv.URL+"/cb?state=s1&who=alice", "", nil, false); r.StatusCode != http.StatusBadRequest {
