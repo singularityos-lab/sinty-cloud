@@ -12,10 +12,10 @@ import (
 func TestSpace(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir, 100)
-	if _, err := s.Put("alice", "docs/a.txt", strings.NewReader("hello")); err != nil {
+	if _, err := s.Put("alice", "docs/a.txt", strings.NewReader("hello"), ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Put("alice", "../../bob/x", strings.NewReader("x")); err != nil {
+	if _, err := s.Put("alice", "../../bob/x", strings.NewReader("x"), ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "users", "alice", "bob", "x")); err != nil {
@@ -43,19 +43,19 @@ func TestSpace(t *testing.T) {
 	if string(b) != "hello" {
 		t.Fatalf("content %q", b)
 	}
-	if _, err := s.Put("alice", "big", strings.NewReader(strings.Repeat("x", 95))); !errors.Is(err, ErrQuota) {
+	if _, err := s.Put("alice", "big", strings.NewReader(strings.Repeat("x", 95)), ""); !errors.Is(err, ErrQuota) {
 		t.Fatalf("quota not enforced: %v", err)
 	}
 	if u, _ := s.Usage("alice"); u != 6 {
 		t.Fatalf("a refused upload changed the usage: %d", u)
 	}
-	if _, err := s.Put("alice", "docs/a.txt", strings.NewReader(strings.Repeat("y", 99))); err != nil {
+	if _, err := s.Put("alice", "docs/a.txt", strings.NewReader(strings.Repeat("y", 99)), ""); err != nil {
 		t.Fatalf("replacing a file counts its old size as free: %v", err)
 	}
 	if u, _ := s.Usage("alice"); u != 100 {
 		t.Fatalf("usage after replace: %d", u)
 	}
-	if _, err := s.Put("alice", ".sinty-upload-x", strings.NewReader("x")); !errors.Is(err, ErrName) {
+	if _, err := s.Put("alice", ".sinty-upload-x", strings.NewReader("x"), ""); !errors.Is(err, ErrName) {
 		t.Fatal("an upload could take a partial file name")
 	}
 	if err := s.Move("alice", "docs", "docs/inner"); !errors.Is(err, ErrName) {

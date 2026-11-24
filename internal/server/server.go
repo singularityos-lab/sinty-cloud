@@ -44,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/v1/me", s.api(s.me))
 	mux.HandleFunc("GET /api/v1/files/{path...}", s.api(s.get))
+	mux.HandleFunc("GET /api/v1/info/{path...}", s.api(s.info))
 	mux.HandleFunc("PUT /api/v1/files/{path...}", s.api(s.put))
 	mux.HandleFunc("DELETE /api/v1/files/{path...}", s.api(s.remove))
 	mux.HandleFunc("POST /api/v1/folders/{path...}", s.api(s.mkdir))
@@ -81,6 +82,8 @@ func failFor(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, files.ErrQuota):
 		fail(w, http.StatusInsufficientStorage, "full")
+	case errors.Is(err, files.ErrChanged):
+		fail(w, http.StatusPreconditionFailed, "changed")
 	case errors.Is(err, files.ErrName):
 		fail(w, http.StatusBadRequest, "invalid_name")
 	case errors.Is(err, fs.ErrNotExist):
@@ -127,19 +130,33 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 	defer f.Close()
+	w.Header().Set("ETag", files.ETag(info))
 	w.Header().Set("Content-Security-Policy", "sandbox")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": info.Name()}))
 	http.ServeContent(w, r, "", info.ModTime(), f)
 }
 
+func (s *Server) info(w http.ResponseWriter, r *http.Request, user string) {
+	info, err := s.Files.Stat(user, r.PathValue("path"))
+	if err != nil || !info.IsDir() && !info.Mode().IsRegular() {
+		failFor(w, fs.ErrNotExist)
+		return
+	}
+	e := files.EntryOf(info)
+	if strings.Trim(path.Clean("/"+r.PathValue("path")), "/") == "" {
+		e.Name = ""
+	}
+	ok(w, e)
+}
+
 func (s *Server) put(w http.ResponseWriter, r *http.Request, user string) {
-	n, err := s.Files.Put(user, r.PathValue("path"), r.Body)
+	e, err := s.Files.Put(user, r.PathValue("path"), r.Body, r.Header.Get("If-Match"))
 	if err != nil {
 		failFor(w, err)
 		return
 	}
-	ok(w, map[string]any{"size": n})
+	ok(w, e)
 }
 
 func (s *Server) remove(w http.ResponseWriter, r *http.Request, user string) {

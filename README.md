@@ -22,13 +22,19 @@ and the service decides how strong that sign-in must be.
 | --- | --- | --- |
 | `GET` | `/api/v1/me` | user, bytes used, quota |
 | `GET` | `/api/v1/files/PATH` | folder listing as JSON, or the file |
-| `PUT` | `/api/v1/files/PATH` | upload, creating folders as needed |
+| `GET` | `/api/v1/info/PATH` | name, size, time and tag of one entry |
+| `PUT` | `/api/v1/files/PATH` | upload, creating folders as needed; answers the new entry |
 | `DELETE` | `/api/v1/files/PATH` | delete a file or a folder |
 | `POST` | `/api/v1/folders/PATH` | create a folder |
 | `POST` | `/api/v1/move` | `{"from": "...", "to": "..."}` |
 
+Every file entry carries an `etag`, also sent as the `ETag` header of a
+download. A `PUT` with `If-Match: TAG` replaces the file only if it still
+has that tag, so two devices editing the same file cannot overwrite each
+other.
+
 Errors are `{"error": "..."}`: `sign_in` (401), `not_found` (404),
-`invalid_name` (400), `exists` (409), `full` (507).
+`invalid_name` (400), `exists` (409), `changed` (412), `full` (507).
 
 ## Running
 
@@ -37,6 +43,7 @@ At the identity provider:
 ```sh
 sinty-identity client add cloud -name "Sinty Cloud" -redirect https://cloud.example.org/cb -min-level 2 -confidential > client.secret
 sinty-identity client add cloud-cli -name "Sinty Cloud on the command line" -redirect http://127.0.0.1/cb -min-level 2
+sinty-identity client add desktop -name "Sinty OS" -redirect http://127.0.0.1/ -min-level 2 -offline
 ```
 
 Then:

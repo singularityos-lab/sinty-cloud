@@ -150,3 +150,62 @@ func TestBearer(t *testing.T) {
 		t.Fatal("a deleted file is still there")
 	}
 }
+
+func entryOf(t *testing.T, r *http.Response) files.Entry {
+	defer r.Body.Close()
+	var e files.Entry
+	if r.StatusCode != http.StatusOK || json.NewDecoder(r.Body).Decode(&e) != nil {
+		t.Fatalf("expected an entry, got %d", r.StatusCode)
+	}
+	return e
+}
+
+func TestConditionalReplace(t *testing.T) {
+	srv := setup(t, fakeAuth{})
+	c := client()
+	put := func(body, match string) *http.Response {
+		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/v1/files/notes.txt", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer tok-alice")
+		if match != "" {
+			req.Header.Set("If-Match", match)
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	if r := put("first", `"0-0"`); r.StatusCode != http.StatusPreconditionFailed {
+		t.Fatalf("a conditional write created a missing file: %d", r.StatusCode)
+	}
+	first := entryOf(t, put("first", ""))
+	if first.Name != "notes.txt" || first.Size != 5 || !strings.HasPrefix(first.ETag, `"`) {
+		t.Fatalf("upload answer %+v", first)
+	}
+	info := entryOf(t, do(t, c, "GET", srv.URL+"/api/v1/info/notes.txt", "tok-alice", nil, false))
+	if info.ETag != first.ETag || info.Size != 5 {
+		t.Fatalf("info %+v, upload %+v", info, first)
+	}
+	r := do(t, c, "GET", srv.URL+"/api/v1/files/notes.txt", "tok-alice", nil, false)
+	r.Body.Close()
+	if r.Header.Get("ETag") != first.ETag {
+		t.Fatalf("download tag %q, entry tag %q", r.Header.Get("ETag"), first.ETag)
+	}
+	second := entryOf(t, put("second!", first.ETag))
+	if second.ETag == first.ETag || second.Size != 7 {
+		t.Fatalf("replace answer %+v", second)
+	}
+	if r := put("third", first.ETag); r.StatusCode != http.StatusPreconditionFailed {
+		t.Fatalf("a stale tag replaced newer content: %d", r.StatusCode)
+	}
+	if got := entryOf(t, do(t, c, "GET", srv.URL+"/api/v1/info/notes.txt", "tok-alice", nil, false)); got.ETag != second.ETag {
+		t.Fatal("a refused write changed the file")
+	}
+	root := entryOf(t, do(t, c, "GET", srv.URL+"/api/v1/info/", "tok-alice", nil, false))
+	if !root.Dir || root.Name != "" || root.ETag != "" {
+		t.Fatalf("root info %+v", root)
+	}
+	if r := do(t, c, "GET", srv.URL+"/api/v1/info/missing", "tok-alice", nil, false); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing info %d", r.StatusCode)
+	}
+}

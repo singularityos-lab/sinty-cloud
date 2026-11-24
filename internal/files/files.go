@@ -2,6 +2,7 @@ package files
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -11,15 +12,17 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/singularityos-lab/sinty-identity/rp"
 )
 
 var (
-	ErrName  = errors.New("files: invalid name")
-	ErrQuota = errors.New("files: the space is full")
-	ErrUser  = errors.New("files: invalid user")
+	ErrName    = errors.New("files: invalid name")
+	ErrQuota   = errors.New("files: the space is full")
+	ErrUser    = errors.New("files: invalid user")
+	ErrChanged = errors.New("files: the file changed")
 )
 
 const partial = ".sinty-upload-"
@@ -31,6 +34,22 @@ type Entry struct {
 	Dir      bool      `json:"dir"`
 	Size     int64     `json:"size"`
 	Modified time.Time `json:"modified"`
+	ETag     string    `json:"etag"`
+}
+
+func ETag(info fs.FileInfo) string {
+	if info.IsDir() {
+		return ""
+	}
+	var ino uint64
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		ino = st.Ino
+	}
+	return fmt.Sprintf(`"%x-%x-%x"`, ino, info.Size(), info.ModTime().UnixNano())
+}
+
+func EntryOf(info fs.FileInfo) Entry {
+	return Entry{Name: info.Name(), Dir: info.IsDir(), Size: info.Size(), Modified: info.ModTime().UTC(), ETag: ETag(info)}
 }
 
 type Store struct {
@@ -111,7 +130,7 @@ func (s *Store) List(user, p string) ([]Entry, error) {
 		if err != nil {
 			continue
 		}
-		out = append(out, Entry{Name: it.Name(), Dir: it.IsDir(), Size: info.Size(), Modified: info.ModTime().UTC()})
+		out = append(out, EntryOf(info))
 	}
 	slices.SortFunc(out, func(a, b Entry) int {
 		if a.Dir != b.Dir {
@@ -190,25 +209,29 @@ func (s *Store) forget(user string) {
 	s.mu.Unlock()
 }
 
-func (s *Store) Put(user, p string, body io.Reader) (int64, error) {
+func (s *Store) Put(user, p string, body io.Reader, match string) (Entry, error) {
 	c, err := clean(p)
 	if err != nil || c == "." {
-		return 0, ErrName
+		return Entry{}, ErrName
 	}
 	r, err := s.root(user)
 	if err != nil {
-		return 0, err
+		return Entry{}, err
 	}
 	defer r.Close()
 	m := s.lock(user)
 	m.Lock()
 	defer m.Unlock()
 	var old int64
-	if info, err := r.Lstat(c); err == nil {
+	info, err := r.Lstat(c)
+	if err == nil {
 		if !info.Mode().IsRegular() {
-			return 0, ErrName
+			return Entry{}, ErrName
 		}
 		old = info.Size()
+	}
+	if match != "" && match != "*" && (err != nil || ETag(info) != match) {
+		return Entry{}, ErrChanged
 	}
 	room := s.Quota - s.used(user, r) + old
 	if room < 0 {
@@ -217,13 +240,13 @@ func (s *Store) Put(user, p string, body io.Reader) (int64, error) {
 	dir := path.Dir(c)
 	if dir != "." {
 		if err := r.MkdirAll(dir, 0o700); err != nil {
-			return 0, err
+			return Entry{}, err
 		}
 	}
 	tmp := path.Join(dir, partial+randomName())
 	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return 0, err
+		return Entry{}, err
 	}
 	n, err := io.Copy(f, io.LimitReader(body, room+1))
 	if cerr := f.Close(); err == nil {
@@ -234,18 +257,22 @@ func (s *Store) Put(user, p string, body io.Reader) (int64, error) {
 	}
 	if err != nil {
 		r.Remove(tmp)
-		return 0, err
+		return Entry{}, err
 	}
 	if err := r.Rename(tmp, c); err != nil {
 		r.Remove(tmp)
-		return 0, err
+		return Entry{}, err
 	}
 	s.mu.Lock()
 	if u, ok := s.usage[user]; ok {
 		s.usage[user] = u - old + n
 	}
 	s.mu.Unlock()
-	return n, nil
+	info, err = r.Lstat(c)
+	if err != nil {
+		return Entry{}, err
+	}
+	return EntryOf(info), nil
 }
 
 func (s *Store) Mkdir(user, p string) error {
