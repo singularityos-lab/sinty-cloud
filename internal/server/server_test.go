@@ -134,7 +134,7 @@ func TestBearer(t *testing.T) {
 	if r := do(t, c, "GET", srv.URL+"/api/v1/me", "bad", nil, false); r.StatusCode != http.StatusUnauthorized {
 		t.Fatal("a bad token was accepted")
 	}
-	if r := do(t, c, "GET", srv.URL+"/api/v1/me", "tok-../etc", nil, false); r.StatusCode != http.StatusUnauthorized {
+	if r := do(t, c, "GET", srv.URL+"/api/v1/me", "tok-../etc", nil, false); r.StatusCode != http.StatusForbidden {
 		t.Fatal("a crafted subject reached the store")
 	}
 	if r := do(t, c, "PUT", srv.URL+"/api/v1/files/big", "tok-alice", strings.NewReader(strings.Repeat("x", 80)), false); r.StatusCode != http.StatusInsufficientStorage {
