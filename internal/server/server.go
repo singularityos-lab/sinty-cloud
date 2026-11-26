@@ -40,6 +40,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.app)
 	mux.HandleFunc("GET /app.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
 		w.Write(appJS)
 	})
 	mux.HandleFunc("GET /api/v1/me", s.api(s.me))
@@ -49,6 +50,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/files/{path...}", s.api(s.remove))
 	mux.HandleFunc("POST /api/v1/folders/{path...}", s.api(s.mkdir))
 	mux.HandleFunc("POST /api/v1/move", s.api(s.move))
+	mux.HandleFunc("POST /api/v1/copy", s.api(s.copy))
+	mux.HandleFunc("GET /api/v1/preview/{path...}", s.api(s.preview))
+	mux.HandleFunc("GET /api/v1/search", s.api(s.search))
+	mux.HandleFunc("GET /api/v1/recent", s.api(s.recent))
+	mux.HandleFunc("GET /api/v1/stars", s.api(s.stars))
+	mux.HandleFunc("PUT /api/v1/stars/{path...}", s.api(s.star(true)))
+	mux.HandleFunc("DELETE /api/v1/stars/{path...}", s.api(s.star(false)))
+	mux.HandleFunc("GET /api/v1/trash", s.api(s.trashList))
+	mux.HandleFunc("POST /api/v1/trash/{path...}", s.api(s.trash))
+	mux.HandleFunc("POST /api/v1/restore/{id}", s.api(s.restore))
+	mux.HandleFunc("DELETE /api/v1/trash/{id}", s.api(s.purge))
+	mux.HandleFunc("DELETE /api/v1/trash", s.api(s.emptyTrash))
+	mux.HandleFunc("GET /api/v1/links", s.api(s.links))
+	mux.HandleFunc("POST /api/v1/links", s.api(s.share))
+	mux.HandleFunc("DELETE /api/v1/links/{token}", s.api(s.unshare))
+	mux.HandleFunc("GET /s/{token}", s.public)
 	if s.UI != "" {
 		mux.Handle("GET /ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir(s.UI))))
 	}
@@ -60,7 +77,7 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(appHTML)
 }
@@ -90,6 +107,10 @@ func failFor(w http.ResponseWriter, err error) {
 		fail(w, http.StatusNotFound, "not_found")
 	case errors.Is(err, fs.ErrExist):
 		fail(w, http.StatusConflict, "exists")
+	case errors.Is(err, files.ErrNotFile):
+		fail(w, http.StatusBadRequest, "not_a_file")
+	case errors.Is(err, files.ErrExpired):
+		fail(w, http.StatusGone, "expired")
 	default:
 		fail(w, http.StatusInternalServerError, "server_error")
 	}
@@ -101,7 +122,12 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request, user string) {
 		failFor(w, err)
 		return
 	}
-	ok(w, map[string]any{"user": user, "used": used, "quota": s.Files.Quota})
+	var trashed int64
+	items, _ := s.Files.TrashList(user)
+	for _, it := range items {
+		trashed += it.Size
+	}
+	ok(w, map[string]any{"user": user, "used": used, "quota": s.Files.Quota, "trash": trashed, "trash_items": len(items)})
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request, user string) {
@@ -117,7 +143,15 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request, user string) {
 			failFor(w, err)
 			return
 		}
-		ok(w, map[string]any{"path": "/" + strings.TrimPrefix(path.Clean("/"+p), "/"), "entries": entries})
+		dir := strings.Trim(path.Clean("/"+p), "/")
+		stars, _ := s.Files.StarSet(user)
+		shared := s.Files.SharedSet(user)
+		for i := range entries {
+			full := path.Join(dir, entries[i].Name)
+			entries[i].Starred = stars[full]
+			entries[i].Shared = shared[full]
+		}
+		ok(w, map[string]any{"path": "/" + dir, "entries": entries})
 		return
 	}
 	if !info.Mode().IsRegular() {

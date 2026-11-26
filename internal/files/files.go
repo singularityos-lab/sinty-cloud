@@ -25,7 +25,12 @@ var (
 	ErrChanged = errors.New("files: the file changed")
 )
 
-const partial = ".sinty-upload-"
+const (
+	reserved = ".sinty-"
+	partial  = reserved + "upload-"
+	trashDir = reserved + "trash"
+	metaDir  = reserved + "meta"
+)
 
 var userName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 
@@ -35,6 +40,8 @@ type Entry struct {
 	Size     int64     `json:"size"`
 	Modified time.Time `json:"modified"`
 	ETag     string    `json:"etag"`
+	Starred  bool      `json:"starred,omitempty"`
+	Shared   bool      `json:"shared,omitempty"`
 }
 
 func ETag(info fs.FileInfo) string {
@@ -75,7 +82,7 @@ func Owner(c rp.Claims) (string, error) {
 func clean(p string) (string, error) {
 	c := strings.TrimPrefix(path.Clean("/"+p), "/")
 	for _, part := range strings.Split(c, "/") {
-		if strings.HasPrefix(part, partial) || strings.ContainsRune(part, 0) {
+		if strings.HasPrefix(part, reserved) || strings.ContainsRune(part, 0) {
 			return "", ErrName
 		}
 	}
@@ -123,7 +130,7 @@ func (s *Store) List(user, p string) ([]Entry, error) {
 	}
 	out := []Entry{}
 	for _, it := range items {
-		if strings.HasPrefix(it.Name(), partial) || it.Type()&fs.ModeSymlink != 0 {
+		if strings.HasPrefix(it.Name(), reserved) || it.Type()&fs.ModeSymlink != 0 {
 			continue
 		}
 		info, err := it.Info()
@@ -322,6 +329,9 @@ func (s *Store) Move(user, from, to string) error {
 		return err
 	}
 	defer r.Close()
+	m := s.lock(user)
+	m.Lock()
+	defer m.Unlock()
 	if _, err := r.Lstat(b); err == nil {
 		return fs.ErrExist
 	}
@@ -330,5 +340,19 @@ func (s *Store) Move(user, from, to string) error {
 			return err
 		}
 	}
-	return r.Rename(a, b)
+	if err := r.Rename(a, b); err != nil {
+		return err
+	}
+	moved := func(p string) (string, bool) {
+		if p == a {
+			return b, true
+		}
+		if rest, ok := strings.CutPrefix(p, a+"/"); ok {
+			return b + "/" + rest, true
+		}
+		return p, true
+	}
+	s.editStars(r, moved)
+	s.editLinks(user, moved)
+	return nil
 }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="sinty-full">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,40 +8,175 @@
 <script src="/ui/src/sintyui.js"></script>
 <script src="/app.js" defer></script>
 <style>
-  body { margin: 0; min-height: 100vh; }
-  main { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
-  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-  h1 { font-size: 20px; font-weight: 700; margin: 0; flex: 1; }
-  nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; font-size: 13px; }
-  nav button { font: inherit; background: none; border: 0; color: var(--sinty-accent-color); padding: 2px 4px; cursor: default; }
-  .usage { font-size: 12px; opacity: .7; }
-  .empty { padding: 24px 12px; text-align: center; opacity: .7; }
-  input[type=file] { display: none; }
-  #message { min-height: 18px; font-size: 12px; color: var(--sinty-error-color); }
+  [hidden] { display: none !important; }
+  sinty-app { --sinty-sidebar-width: 200px; }
+  .storage { display: grid; gap: 6px; padding: 10px 12px 4px; font-size: 11px; }
+  .storage span { opacity: 0.6; }
+  .account { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; outline: none; }
+  .account:hover, .account:focus-visible { background-color: var(--sinty-card-hover-bg); }
+  .account b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .selcount { font-size: 12px; font-weight: 600; padding: 0 6px; white-space: nowrap; }
+  .note { margin: 0 0 14px; font-size: 12px; opacity: 0.6; }
+  .loc { opacity: 0.6; font-size: 12px; }
+  .star { color: #e5a50a; }
+  .flags sinty-icon { --sinty-icon-size: 12px; }
+  .flags .shared { opacity: 0.6; }
+  .rowmenu { opacity: 0; }
+  .item:hover .rowmenu, .item[aria-selected="true"] .rowmenu, .rowmenu[aria-expanded] { opacity: 1; }
+  .rowmenu, .rowmenu button { font: inherit; color: inherit; background: none; border: 0; padding: 0; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 99px; cursor: default; }
+  .rowmenu:hover { background-color: var(--sinty-card-hover-bg); }
+  .tile-badges { position: absolute; top: 8px; right: 10px; display: flex; gap: 4px; }
+  .tile-badges sinty-icon { --sinty-icon-size: 12px; }
+  .drop { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none; background-color: color-mix(in srgb, var(--sinty-accent-color) 14%, transparent); box-shadow: inset 0 0 0 3px var(--sinty-accent-color); }
+  .viewer { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background-color: rgba(0, 0, 0, 0.92); color: white; }
+  .viewer .bar { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; align-items: center; gap: 6px; z-index: 1; }
+  .viewer .title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px black; }
+  .viewer .stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 56px 56px 24px; }
+  .viewer img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6); }
+  .viewer pre { box-sizing: border-box; width: min(860px, 100%); max-height: 100%; overflow: auto; margin: 0; padding: 18px 22px; border-radius: 12px; background-color: var(--sinty-window-tint); color: var(--sinty-text-color); font: 12.5px/1.55 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+  .viewer .side { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; }
+  .viewer .side.prev { left: 12px; }
+  .viewer .side.next { right: 12px; }
+  .picker { display: grid; gap: 2px; max-height: 300px; min-height: 120px; overflow-y: auto; margin: 4px 0 4px; padding: 4px; border-radius: 12px; background-color: var(--sinty-card-bg); border: 1px solid var(--sinty-border-color); min-width: min(380px, 78vw); align-content: start; }
+  .picker button { font: inherit; color: inherit; background: none; border: 0; text-align: start; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 13px; cursor: default; }
+  .picker button:hover { background-color: var(--sinty-card-hover-bg); }
+  .picker button[disabled] { opacity: 0.4; }
+  .picker .up { opacity: 0.75; }
+  .linkbox { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; }
+  .linkbox sinty-entry { flex: 1; }
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .field { display: grid; gap: 6px; min-width: min(340px, 78vw); }
+  .field sinty-entry { width: 100%; }
+  .field small { color: var(--sinty-error-color); min-height: 14px; }
+  .dtext { display: block; max-width: 420px; line-height: 1.45; opacity: 0.8; margin: 0 0 6px; }
+  .namecell { overflow: hidden; }
+  .namecell > div { flex: 1; min-width: 0; display: grid; }
+  .namecell .flags { display: flex; gap: 6px; align-items: center; }
+  .sinty-data-view .sub { display: none; font-size: 11px; opacity: 0.6; }
+  @media (max-width: 640px) {
+    #view .sinty-data-view { --sinty-columns: minmax(0, 1fr) 32px; }
+    .sinty-data-view .wide { display: none !important; }
+    .sinty-data-view .sub { display: block; }
+    sinty-path { --sinty-path-width: 160px; }
+    .viewer .stage { padding: 56px 8px 16px; }
+    sinty-search { --sinty-search-width: 90px; }
+  }
 </style>
 </head>
 <body class="sinty-surface">
-<main>
-  <header>
-    <h1>Files</h1>
-    <span class="usage" id="usage"></span>
-    <sinty-button id="new-folder">New folder</sinty-button>
-    <sinty-button id="upload" variant="suggested" pill>Upload</sinty-button>
-    <input type="file" id="picker" multiple>
-  </header>
-  <nav id="crumbs" aria-label="Folder"></nav>
-  <p id="message" role="alert"></p>
-  <sinty-group id="list"></sinty-group>
-</main>
-<sinty-dialog id="folder-dialog" heading="New folder">
-  <sinty-entry id="folder-name" label="Folder name" placeholder="Name"></sinty-entry>
-  <sinty-button slot="actions" id="folder-cancel" pill>Cancel</sinty-button>
-  <sinty-button slot="actions" id="folder-create" variant="suggested" pill>Create</sinty-button>
+<sinty-app id="app" wide>
+  <sinty-sidebar-row slot="sidebar" data-view="files" icon="folder-symbolic" heading="Files"></sinty-sidebar-row>
+  <sinty-sidebar-row slot="sidebar" data-view="recent" icon="document-open-recent-symbolic" heading="Recent"></sinty-sidebar-row>
+  <sinty-sidebar-row slot="sidebar" data-view="starred" icon="starred-symbolic" heading="Starred"></sinty-sidebar-row>
+  <sinty-sidebar-row slot="sidebar" data-view="links" icon="insert-link-symbolic" heading="Shared Links"></sinty-sidebar-row>
+  <sinty-sidebar-separator slot="sidebar"></sinty-sidebar-separator>
+  <sinty-sidebar-row slot="sidebar" data-view="trash" icon="user-trash-symbolic" heading="Trash"></sinty-sidebar-row>
+  <div slot="sidebar-footer">
+    <div class="storage">
+      <sinty-progress id="space" value="0" label="Space used"></sinty-progress>
+      <span id="space-text">&nbsp;</span>
+    </div>
+    <div class="account" id="account" tabindex="0" role="button" aria-haspopup="menu" aria-label="Account">
+      <sinty-avatar id="avatar" size="28"></sinty-avatar>
+      <b id="user"></b>
+      <sinty-icon name="view-more-symbolic"></sinty-icon>
+    </div>
+  </div>
+
+  <span slot="start" class="selcount" id="selcount" hidden></span>
+
+  <sinty-path slot="bubbles" id="path" class="std"></sinty-path>
+
+  <sinty-search slot="bubbles" id="search" placeholder="Search Files" class="std"></sinty-search>
+  <sinty-segmented slot="bubbles" id="mode" bubble value="list" aria-label="View" class="std">
+    <button value="list" aria-label="List"><sinty-icon name="view-list-symbolic"></sinty-icon></button>
+    <button value="grid" aria-label="Grid"><sinty-icon name="view-grid-symbolic"></sinty-icon></button>
+  </sinty-segmented>
+  <sinty-bubble slot="bubbles" id="sort" icon="view-sort-ascending-symbolic" label="Sort" class="std"></sinty-bubble>
+  <sinty-bubble slot="bubbles" id="new-folder" icon="folder-new-symbolic" label="New Folder" class="std"></sinty-bubble>
+  <sinty-bubble slot="bubbles" id="upload" icon="list-add-symbolic" text="Upload" variant="suggested" class="std"></sinty-bubble>
+  <sinty-bubble slot="bubbles" id="empty-trash" icon="edit-delete-symbolic" text="Empty Trash" class="std" hidden></sinty-bubble>
+
+  <sinty-bubble slot="bubbles" class="sel" data-act="download" icon="folder-download-symbolic" label="Download" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="move" icon="go-up-symbolic" label="Move To" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="copy" icon="edit-copy-symbolic" label="Copy To" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="star" icon="starred-symbolic" label="Star" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="restore" icon="edit-undo-symbolic" text="Restore" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="purge" icon="edit-delete-symbolic" label="Delete Forever" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="unshare" icon="list-remove-symbolic" text="Remove Links" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="trash" icon="user-trash-symbolic" label="Move to Trash" hidden></sinty-bubble>
+  <sinty-bubble slot="bubbles" class="sel" data-act="clear" icon="window-close-symbolic" label="Clear Selection" hidden></sinty-bubble>
+
+  <p class="note" id="note" hidden></p>
+  <div id="view"></div>
+  <sinty-status-page id="empty" hidden></sinty-status-page>
+</sinty-app>
+<div class="drop" id="drop" hidden><sinty-status-page icon="folder-download" heading="Drop to Upload"></sinty-status-page></div>
+
+<input type="file" id="picker" multiple hidden>
+<input type="file" id="folder-picker" webkitdirectory multiple hidden>
+
+<sinty-dialog id="name-dialog">
+  <div class="field">
+    <sinty-entry id="name-entry" label="Name"></sinty-entry>
+    <small id="name-error" role="alert"></small>
+  </div>
+  <sinty-button slot="actions" id="name-cancel" pill>Cancel</sinty-button>
+  <sinty-button slot="actions" id="name-ok" variant="suggested" pill>Create</sinty-button>
 </sinty-dialog>
-<sinty-dialog id="delete-dialog" heading="Delete?">
-  <p id="delete-text"></p>
-  <sinty-button slot="actions" id="delete-cancel" pill>Cancel</sinty-button>
-  <sinty-button slot="actions" id="delete-confirm" variant="destructive" pill>Delete</sinty-button>
+
+<sinty-dialog id="confirm-dialog">
+  <p class="dtext" id="confirm-text"></p>
+  <sinty-button slot="actions" id="confirm-cancel" pill>Cancel</sinty-button>
+  <sinty-button slot="actions" id="confirm-ok" variant="destructive" pill>Delete</sinty-button>
 </sinty-dialog>
+
+<sinty-dialog id="clash-dialog" heading="Already Here">
+  <p class="dtext" id="clash-text"></p>
+  <sinty-button slot="actions" id="clash-skip" pill>Skip</sinty-button>
+  <sinty-button slot="actions" id="clash-both" pill>Keep Both</sinty-button>
+  <sinty-button slot="actions" id="clash-replace" variant="suggested" pill>Replace</sinty-button>
+</sinty-dialog>
+
+<sinty-dialog id="pick-dialog">
+  <p class="dtext" id="pick-where"></p>
+  <div class="picker" id="pick-list" role="list" aria-label="Folders"></div>
+  <sinty-button slot="actions" id="pick-new" variant="flat" pill>New Folder</sinty-button>
+  <sinty-button slot="actions" id="pick-cancel" pill>Cancel</sinty-button>
+  <sinty-button slot="actions" id="pick-ok" variant="suggested" pill>Move Here</sinty-button>
+</sinty-dialog>
+
+<sinty-dialog id="share-dialog">
+  <p class="dtext">Anyone with the link can download this file without signing in.</p>
+  <div class="choices" id="share-days">
+    <sinty-segmented id="share-for" value="7" aria-label="Link works for">
+      <button value="1">1 Day</button>
+      <button value="7">7 Days</button>
+      <button value="30">30 Days</button>
+      <button value="0">No Limit</button>
+    </sinty-segmented>
+  </div>
+  <div class="linkbox" id="share-box" hidden>
+    <sinty-entry id="share-url" label="Link"></sinty-entry>
+  </div>
+  <p class="dtext" id="share-when" hidden></p>
+  <sinty-button slot="actions" id="share-remove" variant="flat" pill hidden>Remove Link</sinty-button>
+  <sinty-button slot="actions" id="share-close" pill>Close</sinty-button>
+  <sinty-button slot="actions" id="share-make" variant="suggested" pill>Create Link</sinty-button>
+  <sinty-button slot="actions" id="share-copy" variant="suggested" pill hidden>Copy Link</sinty-button>
+</sinty-dialog>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-labelledby="viewer-title">
+  <div class="bar">
+    <sinty-bubble id="viewer-close" icon="go-previous-symbolic" label="Back"></sinty-bubble>
+    <span class="title" id="viewer-title"></span>
+    <sinty-bubble id="viewer-star" icon="non-starred-symbolic" label="Star"></sinty-bubble>
+    <sinty-bubble id="viewer-share" icon="insert-link-symbolic" label="Share Link"></sinty-bubble>
+    <sinty-bubble id="viewer-download" icon="folder-download-symbolic" text="Download"></sinty-bubble>
+  </div>
+  <sinty-bubble class="side prev" id="viewer-prev" icon="go-previous-symbolic" label="Previous"></sinty-bubble>
+  <sinty-bubble class="side next" id="viewer-next" icon="go-next-symbolic" label="Next"></sinty-bubble>
+  <div class="stage" id="viewer-stage"></div>
+</div>
 </body>
 </html>
